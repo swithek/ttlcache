@@ -440,12 +440,19 @@ func (c *Cache[K, V]) Touch(key K) {
 	c.items.mu.Unlock()
 }
 
-// Len returns the total number of items in the cache.
+// Len returns the number of unexpired items in the cache.
 func (c *Cache[K, V]) Len() int {
 	c.items.mu.RLock()
 	defer c.items.mu.RUnlock()
 
-	return len(c.items.values)
+	size := 0
+	for _, elem := range c.items.values {
+		if !elem.Value.(*Item[K, V]).isExpiredUnsafe() {
+			size++
+		}
+	}
+
+	return size
 }
 
 // Keys returns all unexpired keys in the cache.
