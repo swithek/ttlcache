@@ -468,8 +468,8 @@ func (c *Cache[K, V]) Items() map[K]*Item[K, V] {
 	defer c.items.mu.RUnlock()
 
 	items := make(map[K]*Item[K, V], len(c.items.values))
-	for k := range c.items.values {
-		item := c.items.values[k].Value.(*Item[K, V])
+	for k, elem := range c.items.values {
+		item := elem.Value.(*Item[K, V])
 		if item != nil && !item.isExpiredUnsafe() {
 			items[k] = item
 		}
