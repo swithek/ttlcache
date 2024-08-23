@@ -448,14 +448,16 @@ func (c *Cache[K, V]) Len() int {
 	return len(c.items.values)
 }
 
-// Keys returns all keys currently present in the cache.
+// Keys returns all unexpired keys in the cache.
 func (c *Cache[K, V]) Keys() []K {
 	c.items.mu.RLock()
 	defer c.items.mu.RUnlock()
 
 	res := make([]K, 0, len(c.items.values))
-	for k := range c.items.values {
-		res = append(res, k)
+	for k, elem := range c.items.values {
+		if !elem.Value.(*Item[K, V]).isExpiredUnsafe() {
+			res = append(res, k)
+		}
 	}
 
 	return res

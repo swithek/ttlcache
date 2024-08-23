@@ -809,6 +809,7 @@ func Test_Cache_Len(t *testing.T) {
 
 func Test_Cache_Keys(t *testing.T) {
 	cache := prepCache(time.Hour, "1", "2", "3")
+	addToCache(cache, time.Nanosecond, "4")
 	assert.ElementsMatch(t, []string{"1", "2", "3"}, cache.Keys())
 }
 
