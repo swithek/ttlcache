@@ -469,9 +469,9 @@ func (c *Cache[K, V]) Items() map[K]*Item[K, V] {
 
 	items := make(map[K]*Item[K, V], len(c.items.values))
 	for k := range c.items.values {
-		item := c.get(k, false, false)
-		if item != nil {
-			items[k] = item.Value.(*Item[K, V])
+		item := c.items.values[k].Value.(*Item[K, V])
+		if item != nil && !item.isExpiredUnsafe() {
+			items[k] = item
 		}
 	}
 

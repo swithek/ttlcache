@@ -837,6 +837,7 @@ func Test_Cache_Keys(t *testing.T) {
 
 func Test_Cache_Items(t *testing.T) {
 	cache := prepCache(time.Hour, "1", "2", "3")
+	addToCache(cache, time.Nanosecond, "4")
 	items := cache.Items()
 	require.Len(t, items, 3)
 
