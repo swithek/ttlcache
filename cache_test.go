@@ -829,6 +829,7 @@ func Test_Cache_Items(t *testing.T) {
 
 func Test_Cache_Range(t *testing.T) {
 	c := prepCache(DefaultTTL, "1", "2", "3", "4", "5")
+	addToCache(c, time.Nanosecond, "6")
 	var results []string
 
 	c.Range(func(item *Item[string, string]) bool {

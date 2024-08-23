@@ -487,7 +487,7 @@ func (c *Cache[K, V]) Items() map[K]*Item[K, V] {
 	return items
 }
 
-// Range calls fn for each item present in the cache. If fn returns false,
+// Range calls fn for each unexpired item in the cache. If fn returns false,
 // Range stops the iteration.
 func (c *Cache[K, V]) Range(fn func(item *Item[K, V]) bool) {
 	c.items.mu.RLock()
@@ -502,7 +502,7 @@ func (c *Cache[K, V]) Range(fn func(item *Item[K, V]) bool) {
 		i := item.Value.(*Item[K, V])
 		c.items.mu.RUnlock()
 
-		if !fn(i) {
+		if !i.isExpiredUnsafe() && !fn(i) {
 			return
 		}
 
