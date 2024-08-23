@@ -339,8 +339,8 @@ func (c *Cache[K, V]) Has(key K) bool {
 	c.items.mu.RLock()
 	defer c.items.mu.RUnlock()
 
-	_, ok := c.items.values[key]
-	return ok
+	elem, ok := c.items.values[key]
+	return ok && !elem.Value.(*Item[K, V]).isExpiredUnsafe()
 }
 
 // GetOrSet retrieves an item from the cache by the provided key.
