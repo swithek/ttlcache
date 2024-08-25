@@ -329,18 +329,18 @@ func Test_Cache_set(t *testing.T) {
 	// recreate situation when expired item gets updated
 	// and not auto-cleaned up yet.
 	c := New[string, struct{}](
-		WithDisableTouchOnHit[string,struct{}](),
+		WithDisableTouchOnHit[string, struct{}](),
 	)
 
 	// insert an item and let it expire
 	c.Set("test", struct{}{}, 1)
-	time.Sleep(50*time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 
 	// update the expired item
 	updatedItem := c.Set("test", struct{}{}, 100*time.Millisecond)
 
 	// eviction should not happen as we prolonged element
-	cl := c.OnEviction(func(_ context.Context, _ EvictionReason, item *Item[string, struct{}]){
+	cl := c.OnEviction(func(_ context.Context, _ EvictionReason, item *Item[string, struct{}]) {
 		t.Errorf("eviction happened even though item has not expired yet: key=%s, evicted item expiresAt=%s, updated item expiresAt=%s, now=%s",
 			item.Key(),
 			item.ExpiresAt().String(),
@@ -351,7 +351,7 @@ func Test_Cache_set(t *testing.T) {
 	// and update expired before its removal
 	go c.Start()
 
-	time.Sleep(90*time.Millisecond)
+	time.Sleep(90 * time.Millisecond)
 	cl()
 	c.Stop()
 }
@@ -843,6 +843,28 @@ func Test_Cache_Range(t *testing.T) {
 	emptyCache := New[string, string]()
 	assert.NotPanics(t, func() {
 		emptyCache.Range(func(item *Item[string, string]) bool {
+			return false
+		})
+	})
+}
+
+func Test_Cache_RangeBackwards(t *testing.T) {
+	c := prepCache(DefaultTTL)
+	addToCache(c, time.Nanosecond, "1")
+	addToCache(c, time.Hour, "2", "3", "4", "5")
+
+	var results []string
+
+	c.RangeBackwards(func(item *Item[string, string]) bool {
+		results = append(results, item.Key())
+		return item.Key() != "4"
+	})
+
+	assert.Equal(t, []string{"2", "3", "4"}, results)
+
+	emptyCache := New[string, string]()
+	assert.NotPanics(t, func() {
+		emptyCache.RangeBackwards(func(item *Item[string, string]) bool {
 			return false
 		})
 	})

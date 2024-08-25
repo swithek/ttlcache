@@ -513,6 +513,32 @@ func (c *Cache[K, V]) Range(fn func(item *Item[K, V]) bool) {
 	}
 }
 
+// RangeBackwards calls fn for each unexpired item in the cache in reverse order.
+// If fn returns false, RangeBackwards stops the iteration.
+func (c *Cache[K, V]) RangeBackwards(fn func(item *Item[K, V]) bool) {
+	c.items.mu.RLock()
+
+	// Check if cache is empty
+	if c.items.lru.Len() == 0 {
+		c.items.mu.RUnlock()
+		return
+	}
+
+	for item := c.items.lru.Back(); item != c.items.lru.Front().Prev(); item = item.Prev() {
+		i := item.Value.(*Item[K, V])
+		expired := i.isExpiredUnsafe()
+		c.items.mu.RUnlock()
+
+		if !expired && !fn(i) {
+			return
+		}
+
+		if item.Prev() != nil {
+			c.items.mu.RLock()
+		}
+	}
+}
+
 // Metrics returns the metrics of the cache.
 func (c *Cache[K, V]) Metrics() Metrics {
 	c.metricsMu.RLock()
