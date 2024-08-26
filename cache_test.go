@@ -803,8 +803,17 @@ func Test_Cache_Touch(t *testing.T) {
 }
 
 func Test_Cache_Len(t *testing.T) {
-	cache := prepCache(time.Hour, "1", "2")
-	for i := 3; i < 30; i++ {
+	cache := prepCache(time.Hour)
+	assert.Equal(t, 0, cache.Len())
+
+	addToCache(cache, time.Hour, "1")
+	assert.Equal(t, 1, cache.Len())
+
+	addToCache(cache, time.Nanosecond, "2")
+	assert.Equal(t, 1, cache.Len())
+
+	addToCache(cache, time.Hour, "3")
+	for i := 4; i < 30; i++ {
 		addToCache(cache, time.Nanosecond, fmt.Sprint(i))
 	}
 	assert.Equal(t, 2, cache.Len())
