@@ -1245,7 +1245,7 @@ func prepCache(ttl time.Duration, keys ...string) *Cache[string, string] {
 
 func addToCache(c *Cache[string, string], ttl time.Duration, keys ...string) {
 	for i, key := range keys {
-		item := newItem(
+		item := NewItem(
 			key,
 			fmt.Sprint("value of", key),
 			ttl+time.Duration(i)*time.Minute,

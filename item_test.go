@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_newItem(t *testing.T) {
-	item := newItem("key", 123, time.Hour, false)
+func Test_NewItem(t *testing.T) {
+	item := NewItem("key", 123, time.Hour, false)
 	require.NotNil(t, item)
 	assert.Equal(t, "key", item.key)
 	assert.Equal(t, 123, item.value)

@@ -39,8 +39,8 @@ type Item[K comparable, V any] struct {
 	version    int64
 }
 
-// newItem creates a new cache item.
-func newItem[K comparable, V any](key K, value V, ttl time.Duration, enableVersionTracking bool) *Item[K, V] {
+// NewItem creates a new cache item.
+func NewItem[K comparable, V any](key K, value V, ttl time.Duration, enableVersionTracking bool) *Item[K, V] {
 	item := &Item[K, V]{
 		key:   key,
 		value: value,
