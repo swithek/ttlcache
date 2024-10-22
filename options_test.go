@@ -68,3 +68,10 @@ func Test_WithDisableTouchOnHit(t *testing.T) {
 	WithDisableTouchOnHit[string, string]().apply(&opts)
 	assert.True(t, opts.disableTouchOnHit)
 }
+
+func Test_WithMemorySize(t *testing.T) {
+	var opts options[string, string]
+
+	WithMemorySize[string, string](1024).apply(&opts)
+	assert.Equal(t, uint64(1024), opts.sizeInBytes)
+}

@@ -18,6 +18,7 @@ func (fn optionFunc[K, V]) apply(opts *options[K, V]) {
 // options holds all available cache configuration options.
 type options[K comparable, V any] struct {
 	capacity              uint64
+	sizeInBytes           uint64
 	ttl                   time.Duration
 	loader                Loader[K, V]
 	disableTouchOnHit     bool
@@ -73,5 +74,13 @@ func WithLoader[K comparable, V any](l Loader[K, V]) Option[K, V] {
 func WithDisableTouchOnHit[K comparable, V any]() Option[K, V] {
 	return optionFunc[K, V](func(opts *options[K, V]) {
 		opts.disableTouchOnHit = true
+	})
+}
+
+// WithMemorySize sets the maximum memory size the cache is allowed to grow.
+// If used together with WithCapacity, WithMemorySize overrules the maximum capacity.
+func WithMemorySize[K comparable, V any](s uint64) Option[K, V] {
+	return optionFunc[K, V](func(opts *options[K, V]) {
+		opts.sizeInBytes = s
 	})
 }
