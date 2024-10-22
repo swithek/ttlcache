@@ -118,6 +118,8 @@ func main() {
 		}
 	})
 
+        go cache.Start()
+
 	cache.Set("first", "value1", ttlcache.DefaultTTL)
 	cache.DeleteAll()
 }
