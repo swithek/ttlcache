@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DmitriyVTitov/size"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -15,6 +16,7 @@ const (
 	EvictionReasonDeleted EvictionReason = iota + 1
 	EvictionReasonCapacityReached
 	EvictionReasonExpired
+	EvictionReasonMaxMemorySizeExceeded
 )
 
 // EvictionReason is used to specify why a certain item was
@@ -36,6 +38,7 @@ type Cache[K comparable, V any] struct {
 
 		timerCh chan time.Duration
 	}
+	sizeInBytes uint64
 
 	metricsMu sync.RWMutex
 	metrics   Metrics
@@ -137,7 +140,23 @@ func (c *Cache[K, V]) set(key K, value V, ttl time.Duration) *Item[K, V] {
 	if elem != nil {
 		// update/overwrite an existing item
 		item := elem.Value.(*Item[K, V])
+		oldValue := item.value
 		item.update(value, ttl)
+
+		if c.options.sizeInBytes != 0 {
+			oldSize := size.Of(oldValue)
+			newSize := size.Of(value)
+
+			// size.Of returns -1 on errors
+			if oldSize != -1 && newSize != -1 {
+				c.sizeInBytes = c.sizeInBytes - uint64(oldSize) + uint64(newSize)
+			}
+
+			for c.sizeInBytes > c.options.sizeInBytes {
+				c.evict(EvictionReasonMaxMemorySizeExceeded, c.items.lru.Back())
+			}
+		}
+
 		c.updateExpirations(false, elem)
 
 		return item
@@ -157,6 +176,17 @@ func (c *Cache[K, V]) set(key K, value V, ttl time.Duration) *Item[K, V] {
 	elem = c.items.lru.PushFront(item)
 	c.items.values[key] = elem
 	c.updateExpirations(true, elem)
+
+	if c.options.sizeInBytes != 0 {
+		itemSize := size.Of(item)
+		if itemSize != -1 {
+			c.sizeInBytes += uint64(itemSize)
+		}
+
+		for c.sizeInBytes > c.options.sizeInBytes {
+			c.evict(EvictionReasonMaxMemorySizeExceeded, c.items.lru.Back())
+		}
+	}
 
 	c.metricsMu.Lock()
 	c.metrics.Insertions++
@@ -258,6 +288,14 @@ func (c *Cache[K, V]) evict(reason EvictionReason, elems ...*list.Element) {
 		for i := range elems {
 			item := elems[i].Value.(*Item[K, V])
 			delete(c.items.values, item.key)
+
+			if c.options.sizeInBytes != 0 {
+				itemSize := size.Of(item)
+				if itemSize != -1 {
+					c.sizeInBytes -= uint64(itemSize)
+				}
+			}
+
 			c.items.lru.Remove(elems[i])
 			c.items.expQueue.remove(elems[i])
 
