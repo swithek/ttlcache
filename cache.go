@@ -79,6 +79,10 @@ func New[K comparable, V any](opts ...Option[K, V]) *Cache[K, V] {
 // Not safe for concurrent use by multiple goroutines without additional
 // locking.
 func (c *Cache[K, V]) updateExpirations(fresh bool, elem *list.Element) {
+	if elem.Value.(*Item[K, V]).ttl == NoTTL {
+		return
+	}
+
 	var oldExpiresAt time.Time
 
 	if !c.items.expQueue.isEmpty() {
