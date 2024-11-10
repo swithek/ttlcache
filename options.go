@@ -23,7 +23,7 @@ type CostCalcFunc[K comparable, V any] func(key K, item V) uint64
 type options[K comparable, V any] struct {
 	capacity              uint64
 	totalCost             uint64
-	costsCalFunc          CostCalcFunc[K, V]
+	costsCalcFunc         CostCalcFunc[K, V]
 	ttl                   time.Duration
 	loader                Loader[K, V]
 	disableTouchOnHit     bool
@@ -89,6 +89,6 @@ func WithDisableTouchOnHit[K comparable, V any]() Option[K, V] {
 func WithTotalCost[K comparable, V any](s uint64, callback CostCalcFunc[K, V]) Option[K, V] {
 	return optionFunc[K, V](func(opts *options[K, V]) {
 		opts.totalCost = s
-		opts.costsCalFunc = callback
+		opts.costsCalcFunc = callback
 	})
 }

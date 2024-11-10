@@ -75,5 +75,5 @@ func Test_WithTotalCost(t *testing.T) {
 	WithTotalCost[string, string](1024, func(key string, item string) uint64 { return 1 }).apply(&opts)
 
 	assert.Equal(t, uint64(1024), opts.totalCost)
-	assert.Equal(t, uint64(1), opts.costsCalFunc("test", "foo"))
+	assert.Equal(t, uint64(1), opts.costsCalcFunc("test", "foo"))
 }
