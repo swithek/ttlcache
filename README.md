@@ -35,6 +35,7 @@ func main() {
 
 Note that by default, a new cache instance does not let any of its
 items to expire or be automatically deleted. However, this feature
+can be activated by passing a few additional options into the 
 `ttlcache.New()` function and calling the `cache.Start()` method:
 ```go
 func main() {
