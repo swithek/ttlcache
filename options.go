@@ -15,7 +15,7 @@ func (fn optionFunc[K, V]) apply(opts *options[K, V]) {
 	fn(opts)
 }
 
-// CostCalcFunc is used to calculate the costs of the key and the item to be
+// CostCalcFunc is used to calculate the cost of the key and the item to be
 // inserted into the cache.
 type CostCalcFunc[K comparable, V any] func(key K, item V) uint64
 
@@ -82,8 +82,8 @@ func WithDisableTouchOnHit[K comparable, V any]() Option[K, V] {
 	})
 }
 
-// WithTotalCost sets the maximum costs the cache is allowed to use (e.g. the used memory).
-// The actual costs calculation for each inserted item happens by making use of the
+// WithTotalCost sets the maximum cost the cache is allowed to use (e.g. the used memory).
+// The actual cost calculation for each inserted item happens by making use of the
 // callback CostCalcFunc.
 // If used together with WithCapacity, WithTotalCost overrules the maximum capacity.
 func WithTotalCost[K comparable, V any](s uint64, callback CostCalcFunc[K, V]) Option[K, V] {
