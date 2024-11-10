@@ -35,7 +35,6 @@ func main() {
 
 Note that by default, a new cache instance does not let any of its
 items to expire or be automatically deleted. However, this feature
-can be activated by passing a few additional options into the 
 `ttlcache.New()` function and calling the `cache.Start()` method:
 ```go
 func main() {
@@ -139,5 +138,26 @@ func main() {
 	)
 
 	item := cache.Get("key from file")
+}
+```
+
+To restrict the cache's capacity based on criteria beyond the number
+of items it can hold, the `ttlcache.WithTotalCost` option allows for
+implementing custom strategies. The following example demonstrates
+how to limit the maximum memory usage of a cache to 5MB:
+```go
+func main() {
+    cache := ttlcache.New[string, string](
+        ttlcache.WithTotalCost[string, string](5120, func(key string, item string) uint64 {
+            // 72 (bytes) represent the memory occupied by the internal structure
+            // used to store the new value.
+            // 16 (bytes) represent the memory footprint of a string header in Go,
+            // as determined by unsafe.Sizeof. This includes the metadata for the string,
+            // such as its length and a pointer to the underlying byte array.
+            return 72 + 16 + len(key) + 16 + len(item)
+        }), 
+    )
+	
+    item := cache.Get("key from file")
 }
 ```
