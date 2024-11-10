@@ -4,13 +4,14 @@ import (
 	"container/list"
 	"context"
 	"fmt"
+	"sync"
+	"testing"
+	"time"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"golang.org/x/sync/singleflight"
-	"sync"
-	"testing"
-	"time"
 )
 
 func TestMain(m *testing.M) {
