@@ -3,7 +3,6 @@ module github.com/jellydator/ttlcache/v3
 go 1.18
 
 require (
-	github.com/DmitriyVTitov/size v1.5.0
 	github.com/stretchr/testify v1.9.0
 	go.uber.org/goleak v1.3.0
 	golang.org/x/sync v0.8.0
