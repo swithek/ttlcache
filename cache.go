@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DmitriyVTitov/size"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -16,7 +15,7 @@ const (
 	EvictionReasonDeleted EvictionReason = iota + 1
 	EvictionReasonCapacityReached
 	EvictionReasonExpired
-	EvictionReasonMaxMemorySizeExceeded
+	EvictionReasonTotalCostExceeded
 )
 
 // EvictionReason is used to specify why a certain item was
@@ -38,7 +37,7 @@ type Cache[K comparable, V any] struct {
 
 		timerCh chan time.Duration
 	}
-	sizeInBytes uint64
+	costs uint64
 
 	metricsMu sync.RWMutex
 	metrics   Metrics
@@ -143,17 +142,14 @@ func (c *Cache[K, V]) set(key K, value V, ttl time.Duration) *Item[K, V] {
 		oldValue := item.value
 		item.update(value, ttl)
 
-		if c.options.sizeInBytes != 0 {
-			oldSize := size.Of(oldValue)
-			newSize := size.Of(value)
+		if c.options.totalCost != 0 {
+			oldItemCosts := c.options.costsCalFunc(key, oldValue)
+			newItemCosts := c.options.costsCalFunc(key, value)
 
-			// size.Of returns -1 on errors
-			if oldSize != -1 && newSize != -1 {
-				c.sizeInBytes = c.sizeInBytes - uint64(oldSize) + uint64(newSize)
-			}
+			c.costs = c.costs - oldItemCosts + newItemCosts
 
-			for c.sizeInBytes > c.options.sizeInBytes {
-				c.evict(EvictionReasonMaxMemorySizeExceeded, c.items.lru.Back())
+			for c.costs > c.options.totalCost {
+				c.evict(EvictionReasonTotalCostExceeded, c.items.lru.Back())
 			}
 		}
 
@@ -177,14 +173,11 @@ func (c *Cache[K, V]) set(key K, value V, ttl time.Duration) *Item[K, V] {
 	c.items.values[key] = elem
 	c.updateExpirations(true, elem)
 
-	if c.options.sizeInBytes != 0 {
-		itemSize := size.Of(item)
-		if itemSize != -1 {
-			c.sizeInBytes += uint64(itemSize)
-		}
+	if c.options.totalCost != 0 {
+		c.costs += c.options.costsCalFunc(key, value)
 
-		for c.sizeInBytes > c.options.sizeInBytes {
-			c.evict(EvictionReasonMaxMemorySizeExceeded, c.items.lru.Back())
+		for c.costs > c.options.totalCost {
+			c.evict(EvictionReasonTotalCostExceeded, c.items.lru.Back())
 		}
 	}
 
@@ -289,11 +282,8 @@ func (c *Cache[K, V]) evict(reason EvictionReason, elems ...*list.Element) {
 			item := elems[i].Value.(*Item[K, V])
 			delete(c.items.values, item.key)
 
-			if c.options.sizeInBytes != 0 {
-				itemSize := size.Of(item)
-				if itemSize != -1 {
-					c.sizeInBytes -= uint64(itemSize)
-				}
+			if c.options.totalCost != 0 {
+				c.costs -= c.options.costsCalFunc(item.key, item.value)
 			}
 
 			c.items.lru.Remove(elems[i])
