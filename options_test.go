@@ -1,10 +1,9 @@
 package ttlcache
 
 import (
+	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func Test_optionFunc_apply(t *testing.T) {
@@ -69,9 +68,11 @@ func Test_WithDisableTouchOnHit(t *testing.T) {
 	assert.True(t, opts.disableTouchOnHit)
 }
 
-func Test_WithMemorySize(t *testing.T) {
+func Test_WithTotalCost(t *testing.T) {
 	var opts options[string, string]
 
-	WithMemorySize[string, string](1024).apply(&opts)
-	assert.Equal(t, uint64(1024), opts.sizeInBytes)
+	WithTotalCost[string, string](1024, func(key string, item string) uint64 { return 1 }).apply(&opts)
+
+	assert.Equal(t, uint64(1024), opts.totalCost)
+	assert.Equal(t, uint64(1), opts.costsCalFunc("test", "foo"))
 }
