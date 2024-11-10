@@ -153,8 +153,7 @@ func main() {
             // 72 (bytes) represent the memory occupied by the *ttlcache.Item structure
             // used to store the new value.
             // 16 (bytes) represent the memory footprint of a string header in Go,
-            // as determined by unsafe.Sizeof. This includes the metadata for the string,
-            // such as its length and a pointer to the underlying byte array.
+            // as determined by unsafe.Sizeof.
             return 72 + 16 + len(key) + 16 + len(item)
         }), 
     )
