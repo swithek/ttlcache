@@ -149,7 +149,7 @@ how to limit the maximum memory usage of a cache to 5MB:
 func main() {
     cache := ttlcache.New[string, string](
         ttlcache.WithTotalCost[string, string](5120, func(key string, item string) uint64 {
-            // 72 (bytes) represent the memory occupied by the internal structure
+            // 72 (bytes) represent the memory occupied by the *ttlcache.Item structure
             // used to store the new value.
             // 16 (bytes) represent the memory footprint of a string header in Go,
             // as determined by unsafe.Sizeof. This includes the metadata for the string,
@@ -157,7 +157,7 @@ func main() {
             return 72 + 16 + len(key) + 16 + len(item)
         }), 
     )
-	
-    item := cache.Get("key from file")
+
+    cache.Set("first", "value1", ttlcache.DefaultTTL)
 }
 ```
