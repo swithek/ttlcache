@@ -22,7 +22,7 @@ type CostFunc[K comparable, V any] func(key K, item V) uint64
 // options holds all available cache configuration options.
 type options[K comparable, V any] struct {
 	capacity              uint64
-	totalCost             uint64
+	maxCost               uint64
 	costFunc              CostFunc[K, V]
 	ttl                   time.Duration
 	loader                Loader[K, V]
@@ -88,7 +88,7 @@ func WithDisableTouchOnHit[K comparable, V any]() Option[K, V] {
 // If used together with WithCapacity, WithTotalCost overrules the maximum capacity.
 func WithTotalCost[K comparable, V any](s uint64, callback CostFunc[K, V]) Option[K, V] {
 	return optionFunc[K, V](func(opts *options[K, V]) {
-		opts.totalCost = s
+		opts.maxCost = s
 		opts.costFunc = callback
 	})
 }

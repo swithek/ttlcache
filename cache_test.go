@@ -1262,7 +1262,7 @@ func prepCache(maxCost uint64, ttl time.Duration, keys ...string) *Cache[string,
 	c := &Cache[string, string]{}
 	c.options.ttl = ttl
 	if maxCost != 0 {
-		c.options.totalCost = maxCost
+		c.options.maxCost = maxCost
 		c.options.costFunc = func(key string, item string) uint64 {
 			// 72 bytes are used by the Item struct
 			// 2 * 16 bytes are used by the used string headers (key and item)
@@ -1294,7 +1294,7 @@ func addToCache(c *Cache[string, string], ttl time.Duration, keys ...string) {
 		c.items.values[key] = elem
 		c.items.expQueue.push(elem)
 
-		if c.options.totalCost != 0 {
+		if c.options.maxCost != 0 {
 			c.cost += c.options.costFunc(key, value)
 		}
 	}
