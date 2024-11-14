@@ -69,10 +69,10 @@ func Test_WithDisableTouchOnHit(t *testing.T) {
 	assert.True(t, opts.disableTouchOnHit)
 }
 
-func Test_WithTotalCost(t *testing.T) {
+func Test_WithMaxCost(t *testing.T) {
 	var opts options[string, string]
 
-	WithTotalCost[string, string](1024, func(key string, item string) uint64 { return 1 }).apply(&opts)
+	WithMaxCost[string, string](1024, func(key string, item string) uint64 { return 1 }).apply(&opts)
 
 	assert.Equal(t, uint64(1024), opts.maxCost)
 	assert.Equal(t, uint64(1), opts.costFunc("test", "foo"))

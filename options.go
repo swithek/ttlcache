@@ -82,11 +82,10 @@ func WithDisableTouchOnHit[K comparable, V any]() Option[K, V] {
 	})
 }
 
-// WithTotalCost sets the maximum cost the cache is allowed to use (e.g. the used memory).
+// WithMaxCost sets the maximum cost the cache is allowed to use (e.g. the used memory).
 // The actual cost calculation for each inserted item happens by making use of the
 // callback CostFunc.
-// If used together with WithCapacity, WithTotalCost overrules the maximum capacity.
-func WithTotalCost[K comparable, V any](s uint64, callback CostFunc[K, V]) Option[K, V] {
+func WithMaxCost[K comparable, V any](s uint64, callback CostFunc[K, V]) Option[K, V] {
 	return optionFunc[K, V](func(opts *options[K, V]) {
 		opts.maxCost = s
 		opts.costFunc = callback
