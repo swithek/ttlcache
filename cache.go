@@ -142,6 +142,8 @@ func (c *Cache[K, V]) set(key K, value V, ttl time.Duration) *Item[K, V] {
 		oldValue := item.value
 		item.update(value, ttl)
 
+		c.updateExpirations(false, elem)
+
 		if c.options.totalCost != 0 {
 			oldItemCosts := c.options.costFunc(key, oldValue)
 			newItemCosts := c.options.costFunc(key, value)
@@ -152,8 +154,6 @@ func (c *Cache[K, V]) set(key K, value V, ttl time.Duration) *Item[K, V] {
 				c.evict(EvictionReasonTotalCostExceeded, c.items.lru.Back())
 			}
 		}
-
-		c.updateExpirations(false, elem)
 
 		return item
 	}
