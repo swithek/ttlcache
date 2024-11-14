@@ -246,7 +246,7 @@ func Test_Cache_set(t *testing.T) {
 			ExpectFns: true,
 		},
 		"Set with existing key and eviction caused by exhausted cost": {
-			MaxCost: 300,
+			MaxCost: 30,
 			Key:     existingKey,
 			TTL:     DefaultTTL,
 			Metrics: Metrics{
@@ -255,7 +255,7 @@ func Test_Cache_set(t *testing.T) {
 			},
 		},
 		"Set with existing key and no eviction": {
-			MaxCost: 500,
+			MaxCost: 50,
 			Key:     existingKey,
 			TTL:     DefaultTTL,
 			Metrics: Metrics{
@@ -264,7 +264,7 @@ func Test_Cache_set(t *testing.T) {
 			},
 		},
 		"Set with new key and eviction caused by exhausted cost": {
-			MaxCost: 400,
+			MaxCost: 40,
 			Key:     newKey,
 			TTL:     DefaultTTL,
 			Metrics: Metrics{
@@ -1266,7 +1266,7 @@ func prepCache(maxCost uint64, ttl time.Duration, keys ...string) *Cache[string,
 		c.options.costsCalcFunc = func(key string, item string) uint64 {
 			// 72 bytes are used by the Item struct
 			// 2 * 16 bytes are used by the used string headers (key and item)
-			return uint64(104 + len(key) + len(item))
+			return uint64(len(item))
 		}
 	}
 	c.items.values = make(map[string]*list.Element)
