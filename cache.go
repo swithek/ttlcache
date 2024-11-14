@@ -37,7 +37,7 @@ type Cache[K comparable, V any] struct {
 
 		timerCh chan time.Duration
 	}
-	costs uint64
+	cost uint64
 
 	metricsMu sync.RWMutex
 	metrics   Metrics
@@ -146,9 +146,9 @@ func (c *Cache[K, V]) set(key K, value V, ttl time.Duration) *Item[K, V] {
 			oldItemCosts := c.options.costsCalcFunc(key, oldValue)
 			newItemCosts := c.options.costsCalcFunc(key, value)
 
-			c.costs = c.costs - oldItemCosts + newItemCosts
+			c.cost = c.cost - oldItemCosts + newItemCosts
 
-			for c.costs > c.options.totalCost {
+			for c.cost > c.options.totalCost {
 				c.evict(EvictionReasonTotalCostExceeded, c.items.lru.Back())
 			}
 		}
@@ -174,9 +174,9 @@ func (c *Cache[K, V]) set(key K, value V, ttl time.Duration) *Item[K, V] {
 	c.updateExpirations(true, elem)
 
 	if c.options.totalCost != 0 {
-		c.costs += c.options.costsCalcFunc(key, value)
+		c.cost += c.options.costsCalcFunc(key, value)
 
-		for c.costs > c.options.totalCost {
+		for c.cost > c.options.totalCost {
 			c.evict(EvictionReasonTotalCostExceeded, c.items.lru.Back())
 		}
 	}
@@ -283,7 +283,7 @@ func (c *Cache[K, V]) evict(reason EvictionReason, elems ...*list.Element) {
 			delete(c.items.values, item.key)
 
 			if c.options.totalCost != 0 {
-				c.costs -= c.options.costsCalcFunc(item.key, item.value)
+				c.cost -= c.options.costsCalcFunc(item.key, item.value)
 			}
 
 			c.items.lru.Remove(elems[i])

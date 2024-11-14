@@ -1295,7 +1295,7 @@ func addToCache(c *Cache[string, string], ttl time.Duration, keys ...string) {
 		c.items.expQueue.push(elem)
 
 		if c.options.totalCost != 0 {
-			c.costs += c.options.costsCalcFunc(key, value)
+			c.cost += c.options.costsCalcFunc(key, value)
 		}
 	}
 }
