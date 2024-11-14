@@ -155,7 +155,7 @@ import (
 func main() {
     cache := ttlcache.New[string, string](
         ttlcache.WithMaxCost[string, string](5120, func(item *ttlcache.Item[string, string]) uint64 {
-            return size.Of(item)
+            return uint64(size.Of(item))
         }), 
     )
 
