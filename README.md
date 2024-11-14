@@ -147,14 +147,15 @@ of items it can hold, the `ttlcache.WithMaxCost` option allows for
 implementing custom strategies. The following example demonstrates
 how to limit the maximum memory usage of a cache to 5MB:
 ```go
+import (
+    "github.com/jellydator/ttlcache"
+    "github.com/DmitriyVTitov/size"
+)
+
 func main() {
     cache := ttlcache.New[string, string](
-        ttlcache.WithMaxCost[string, string](5120, func(key string, item string) uint64 {
-            // 72 (bytes) represent the memory occupied by the *ttlcache.Item structure
-            // used to store the new value.
-            // 16 (bytes) represent the memory footprint of a string header in Go,
-            // as determined by unsafe.Sizeof.
-            return 72 + 16 + len(key) + 16 + len(item)
+        ttlcache.WithMaxCost[string, string](5120, func(item *ttlcache.Item[string, string]) uint64 {
+            return size.Of(item)
         }), 
     )
 
