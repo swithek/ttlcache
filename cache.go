@@ -137,20 +137,16 @@ func (c *Cache[K, V]) set(key K, value V, ttl time.Duration) *Item[K, V] {
 
 	elem := c.get(key, false, true)
 	if elem != nil {
-		var oldItemCosts uint64
 		// update/overwrite an existing item
 		item := elem.Value.(*Item[K, V])
-		if c.options.maxCost != 0 {
-			oldItemCosts = c.options.costFunc(item)
-		}
+		oldItemCost := item.cost
 
 		item.update(value, ttl)
 
 		c.updateExpirations(false, elem)
 
 		if c.options.maxCost != 0 {
-			newItemCosts := c.options.costFunc(item)
-			c.cost = c.cost - oldItemCosts + newItemCosts
+			c.cost = c.cost - oldItemCost + item.cost
 
 			for c.cost > c.options.maxCost {
 				c.evict(EvictionReasonTotalCostExceeded, c.items.lru.Back())
@@ -170,13 +166,13 @@ func (c *Cache[K, V]) set(key K, value V, ttl time.Duration) *Item[K, V] {
 	}
 
 	// create a new item
-	item := NewItem(key, value, ttl, c.options.enableVersionTracking)
+	item := NewItemWithOpts(key, value, ttl, c.options.itemOpts...)
 	elem = c.items.lru.PushFront(item)
 	c.items.values[key] = elem
 	c.updateExpirations(true, elem)
 
 	if c.options.maxCost != 0 {
-		c.cost += c.options.costFunc(item)
+		c.cost += item.cost
 
 		for c.cost > c.options.maxCost {
 			c.evict(EvictionReasonTotalCostExceeded, c.items.lru.Back())
@@ -285,7 +281,7 @@ func (c *Cache[K, V]) evict(reason EvictionReason, elems ...*list.Element) {
 			delete(c.items.values, item.key)
 
 			if c.options.maxCost != 0 {
-				c.cost -= c.options.costFunc(item)
+				c.cost -= item.cost
 			}
 
 			c.items.lru.Remove(elems[i])
