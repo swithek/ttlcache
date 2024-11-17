@@ -21,13 +21,12 @@ type CostFunc[K comparable, V any] func(item *Item[K, V]) uint64
 
 // options holds all available cache configuration options.
 type options[K comparable, V any] struct {
-	capacity              uint64
-	maxCost               uint64
-	costFunc              CostFunc[K, V]
-	ttl                   time.Duration
-	loader                Loader[K, V]
-	disableTouchOnHit     bool
-	enableVersionTracking bool
+	capacity          uint64
+	maxCost           uint64
+	ttl               time.Duration
+	loader            Loader[K, V]
+	disableTouchOnHit bool
+	itemOpts          []ItemOption[K, V]
 }
 
 // applyOptions applies the provided option values to the option struct.
@@ -58,7 +57,7 @@ func WithTTL[K comparable, V any](ttl time.Duration) Option[K, V] {
 // It has no effect when used with Get().
 func WithVersion[K comparable, V any](enable bool) Option[K, V] {
 	return optionFunc[K, V](func(opts *options[K, V]) {
-		opts.enableVersionTracking = enable
+		opts.itemOpts = append(opts.itemOpts, WithVersionTracking[K, V](enable))
 	})
 }
 
@@ -88,6 +87,32 @@ func WithDisableTouchOnHit[K comparable, V any]() Option[K, V] {
 func WithMaxCost[K comparable, V any](s uint64, callback CostFunc[K, V]) Option[K, V] {
 	return optionFunc[K, V](func(opts *options[K, V]) {
 		opts.maxCost = s
-		opts.costFunc = callback
+		opts.itemOpts = append(opts.itemOpts, WithCostFunc[K, V](callback))
 	})
+}
+
+// ItemOption represents an option to be applied to an Item on creation
+type ItemOption[K comparable, V any] func(item *Item[K, V])
+
+// WithVersionTracking deactivates ot activates item version tracking.
+// If version tracking is disabled, the version is always -1.
+// It has no effect when used with Get().
+func WithVersionTracking[K comparable, V any](enable bool) ItemOption[K, V] {
+	return func(item *Item[K, V]) {
+		if enable {
+			item.version = 0
+		} else {
+			item.version = -1
+		}
+	}
+}
+
+// WithCostFunc configures the cost calculation function for an item
+func WithCostFunc[K comparable, V any](costFunc CostFunc[K, V]) ItemOption[K, V] {
+	return func(item *Item[K, V]) {
+		if costFunc != nil {
+			item.calculateCost = costFunc
+			item.cost = costFunc(item)
+		}
+	}
 }
