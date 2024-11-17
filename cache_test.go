@@ -1261,14 +1261,17 @@ func Test_SuppressedLoader_Load(t *testing.T) {
 func prepCache(maxCost uint64, ttl time.Duration, keys ...string) *Cache[string, string] {
 	c := &Cache[string, string]{}
 	c.options.ttl = ttl
+	c.options.itemOpts = append(c.options.itemOpts,
+		WithVersionTracking[string, string](false))
+
 	if maxCost != 0 {
 		c.options.maxCost = maxCost
-		c.options.costFunc = func(item *Item[string, string]) uint64 {
-			// 72 bytes are used by the Item struct
-			// 2 * 16 bytes are used by the used string headers (key and item)
-			return uint64(len(item.value))
-		}
+		c.options.itemOpts = append(c.options.itemOpts,
+			WithCostFunc[string, string](func(item *Item[string, string]) uint64 {
+				return uint64(len(item.value))
+			}))
 	}
+
 	c.items.values = make(map[string]*list.Element)
 	c.items.lru = list.New()
 	c.items.expQueue = newExpirationQueue[string, string]()
@@ -1284,18 +1287,15 @@ func prepCache(maxCost uint64, ttl time.Duration, keys ...string) *Cache[string,
 func addToCache(c *Cache[string, string], ttl time.Duration, keys ...string) {
 	for i, key := range keys {
 		value := fmt.Sprint("value of", key)
-		item := NewItem(
+		item := NewItemWithOpts(
 			key,
 			value,
 			ttl+time.Duration(i)*time.Minute,
-			false,
+			c.options.itemOpts...,
 		)
 		elem := c.items.lru.PushFront(item)
 		c.items.values[key] = elem
 		c.items.expQueue.push(elem)
 
-		if c.options.maxCost != 0 {
-			c.cost += c.options.costFunc(item)
-		}
 	}
 }
