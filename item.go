@@ -57,7 +57,7 @@ func NewItemWithOpts[K comparable, V any](key K, value V, ttl time.Duration, opt
 	}
 
 	for _, opt := range opts {
-		opt(item)
+		opt.apply(item)
 	}
 
 	item.touch()

@@ -92,27 +92,37 @@ func WithMaxCost[K comparable, V any](s uint64, callback CostFunc[K, V]) Option[
 }
 
 // ItemOption represents an option to be applied to an Item on creation
-type ItemOption[K comparable, V any] func(item *Item[K, V])
+type ItemOption[K comparable, V any] interface {
+	apply(item *Item[K, V])
+}
+
+// itemOptionFunc wraps a function and implements the ItemOption interface.
+type itemOptionFunc[K comparable, V any] func(*Item[K, V])
+
+// apply calls the wrapped function.
+func (fn itemOptionFunc[K, V]) apply(item *Item[K, V]) {
+	fn(item)
+}
 
 // WithVersionTracking deactivates ot activates item version tracking.
 // If version tracking is disabled, the version is always -1.
 // It has no effect when used with Get().
 func WithVersionTracking[K comparable, V any](enable bool) ItemOption[K, V] {
-	return func(item *Item[K, V]) {
+	return itemOptionFunc[K, V](func(item *Item[K, V]) {
 		if enable {
 			item.version = 0
 		} else {
 			item.version = -1
 		}
-	}
+	})
 }
 
 // WithCostFunc configures the cost calculation function for an item
 func WithCostFunc[K comparable, V any](costFunc CostFunc[K, V]) ItemOption[K, V] {
-	return func(item *Item[K, V]) {
+	return itemOptionFunc[K, V](func(item *Item[K, V]) {
 		if costFunc != nil {
 			item.calculateCost = costFunc
 			item.cost = costFunc(item)
 		}
-	}
+	})
 }
