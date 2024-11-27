@@ -1297,5 +1297,8 @@ func addToCache(c *Cache[string, string], ttl time.Duration, keys ...string) {
 		c.items.values[key] = elem
 		c.items.expQueue.push(elem)
 
+		if c.options.maxCost != 0 {
+			c.cost += item.cost
+		}
 	}
 }
