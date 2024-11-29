@@ -42,13 +42,12 @@ type Item[K comparable, V any] struct {
 }
 
 // NewItem creates a new cache item.
-// Deprecated, use NewItemWithOpts instead
 func NewItem[K comparable, V any](key K, value V, ttl time.Duration, enableVersionTracking bool) *Item[K, V] {
-	return NewItemWithOpts(key, value, ttl, WithVersionTracking[K, V](enableVersionTracking))
+	return newItemWithOpts(key, value, ttl, withVersionTracking[K, V](enableVersionTracking))
 }
 
-// NewItemWithOpts creates a new cache item.
-func NewItemWithOpts[K comparable, V any](key K, value V, ttl time.Duration, opts ...ItemOption[K, V]) *Item[K, V] {
+// newItemWithOpts creates a new cache item.
+func newItemWithOpts[K comparable, V any](key K, value V, ttl time.Duration, opts ...itemOption[K, V]) *Item[K, V] {
 	item := &Item[K, V]{
 		key:           key,
 		value:         value,

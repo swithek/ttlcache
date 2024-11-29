@@ -15,7 +15,7 @@ const (
 	EvictionReasonDeleted EvictionReason = iota + 1
 	EvictionReasonCapacityReached
 	EvictionReasonExpired
-	EvictionReasonTotalCostExceeded
+	EvictionReasonMaxCostExceeded
 )
 
 // EvictionReason is used to specify why a certain item was
@@ -149,7 +149,7 @@ func (c *Cache[K, V]) set(key K, value V, ttl time.Duration) *Item[K, V] {
 			c.cost = c.cost - oldItemCost + item.cost
 
 			for c.cost > c.options.maxCost {
-				c.evict(EvictionReasonTotalCostExceeded, c.items.lru.Back())
+				c.evict(EvictionReasonMaxCostExceeded, c.items.lru.Back())
 			}
 		}
 
@@ -166,7 +166,7 @@ func (c *Cache[K, V]) set(key K, value V, ttl time.Duration) *Item[K, V] {
 	}
 
 	// create a new item
-	item := NewItemWithOpts(key, value, ttl, c.options.itemOpts...)
+	item := newItemWithOpts(key, value, ttl, c.options.itemOpts...)
 	elem = c.items.lru.PushFront(item)
 	c.items.values[key] = elem
 	c.updateExpirations(true, elem)
@@ -175,7 +175,7 @@ func (c *Cache[K, V]) set(key K, value V, ttl time.Duration) *Item[K, V] {
 		c.cost += item.cost
 
 		for c.cost > c.options.maxCost {
-			c.evict(EvictionReasonTotalCostExceeded, c.items.lru.Back())
+			c.evict(EvictionReasonMaxCostExceeded, c.items.lru.Back())
 		}
 	}
 

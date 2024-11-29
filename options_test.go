@@ -62,7 +62,7 @@ func Test_WithVersion(t *testing.T) {
 	opts.itemOpts[0].apply(&item)
 	assert.Equal(t, int64(0), item.version)
 
-	opts.itemOpts = []ItemOption[string, string]{}
+	opts.itemOpts = []itemOption[string, string]{}
 	WithVersion[string, string](false).apply(&opts)
 	assert.Len(t, opts.itemOpts, 1)
 	opts.itemOpts[0].apply(&item)
@@ -110,11 +110,11 @@ func Test_WithVersionTracking(t *testing.T) {
 
 	var item Item[string, string]
 
-	opt := WithVersionTracking[string, string](false)
+	opt := withVersionTracking[string, string](false)
 	opt.apply(&item)
 	assert.Equal(t, int64(-1), item.version)
 
-	opt = WithVersionTracking[string, string](true)
+	opt = withVersionTracking[string, string](true)
 	opt.apply(&item)
 	assert.Equal(t, int64(0), item.version)
 }
@@ -124,7 +124,7 @@ func Test_WithCostFunc(t *testing.T) {
 
 	var item Item[string, string]
 
-	opt := WithCostFunc[string, string](func(item *Item[string, string]) uint64 {
+	opt := withCostFunc[string, string](func(item *Item[string, string]) uint64 {
 		return 10
 	})
 	opt.apply(&item)

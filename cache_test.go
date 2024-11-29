@@ -298,7 +298,7 @@ func Test_Cache_set(t *testing.T) {
 			cache.events.insertion.fns[2] = cache.events.insertion.fns[1]
 			cache.events.eviction.fns[1] = func(r EvictionReason, item *Item[string, string]) {
 				if c.MaxCost != 0 {
-					assert.Equal(t, EvictionReasonTotalCostExceeded, r)
+					assert.Equal(t, EvictionReasonMaxCostExceeded, r)
 				} else {
 					assert.Equal(t, EvictionReasonCapacityReached, r)
 				}
@@ -1262,12 +1262,12 @@ func prepCache(maxCost uint64, ttl time.Duration, keys ...string) *Cache[string,
 	c := &Cache[string, string]{}
 	c.options.ttl = ttl
 	c.options.itemOpts = append(c.options.itemOpts,
-		WithVersionTracking[string, string](false))
+		withVersionTracking[string, string](false))
 
 	if maxCost != 0 {
 		c.options.maxCost = maxCost
 		c.options.itemOpts = append(c.options.itemOpts,
-			WithCostFunc[string, string](func(item *Item[string, string]) uint64 {
+			withCostFunc[string, string](func(item *Item[string, string]) uint64 {
 				return uint64(len(item.value))
 			}))
 	}
@@ -1287,7 +1287,7 @@ func prepCache(maxCost uint64, ttl time.Duration, keys ...string) *Cache[string,
 func addToCache(c *Cache[string, string], ttl time.Duration, keys ...string) {
 	for i, key := range keys {
 		value := fmt.Sprint("value of", key)
-		item := NewItemWithOpts(
+		item := newItemWithOpts(
 			key,
 			value,
 			ttl+time.Duration(i)*time.Minute,

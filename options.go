@@ -26,7 +26,7 @@ type options[K comparable, V any] struct {
 	ttl               time.Duration
 	loader            Loader[K, V]
 	disableTouchOnHit bool
-	itemOpts          []ItemOption[K, V]
+	itemOpts          []itemOption[K, V]
 }
 
 // applyOptions applies the provided option values to the option struct.
@@ -57,7 +57,7 @@ func WithTTL[K comparable, V any](ttl time.Duration) Option[K, V] {
 // It has no effect when used with Get().
 func WithVersion[K comparable, V any](enable bool) Option[K, V] {
 	return optionFunc[K, V](func(opts *options[K, V]) {
-		opts.itemOpts = append(opts.itemOpts, WithVersionTracking[K, V](enable))
+		opts.itemOpts = append(opts.itemOpts, withVersionTracking[K, V](enable))
 	})
 }
 
@@ -87,16 +87,16 @@ func WithDisableTouchOnHit[K comparable, V any]() Option[K, V] {
 func WithMaxCost[K comparable, V any](s uint64, callback CostFunc[K, V]) Option[K, V] {
 	return optionFunc[K, V](func(opts *options[K, V]) {
 		opts.maxCost = s
-		opts.itemOpts = append(opts.itemOpts, WithCostFunc[K, V](callback))
+		opts.itemOpts = append(opts.itemOpts, withCostFunc[K, V](callback))
 	})
 }
 
-// ItemOption represents an option to be applied to an Item on creation
-type ItemOption[K comparable, V any] interface {
+// itemOption represents an option to be applied to an Item on creation
+type itemOption[K comparable, V any] interface {
 	apply(item *Item[K, V])
 }
 
-// itemOptionFunc wraps a function and implements the ItemOption interface.
+// itemOptionFunc wraps a function and implements the itemOption interface.
 type itemOptionFunc[K comparable, V any] func(*Item[K, V])
 
 // apply calls the wrapped function.
@@ -104,10 +104,10 @@ func (fn itemOptionFunc[K, V]) apply(item *Item[K, V]) {
 	fn(item)
 }
 
-// WithVersionTracking deactivates ot activates item version tracking.
+// withVersionTracking deactivates ot activates item version tracking.
 // If version tracking is disabled, the version is always -1.
 // It has no effect when used with Get().
-func WithVersionTracking[K comparable, V any](enable bool) ItemOption[K, V] {
+func withVersionTracking[K comparable, V any](enable bool) itemOption[K, V] {
 	return itemOptionFunc[K, V](func(item *Item[K, V]) {
 		if enable {
 			item.version = 0
@@ -117,8 +117,8 @@ func WithVersionTracking[K comparable, V any](enable bool) ItemOption[K, V] {
 	})
 }
 
-// WithCostFunc configures the cost calculation function for an item
-func WithCostFunc[K comparable, V any](costFunc CostFunc[K, V]) ItemOption[K, V] {
+// withCostFunc configures the cost calculation function for an item
+func withCostFunc[K comparable, V any](costFunc CostFunc[K, V]) itemOption[K, V] {
 	return itemOptionFunc[K, V](func(item *Item[K, V]) {
 		if costFunc != nil {
 			item.calculateCost = costFunc

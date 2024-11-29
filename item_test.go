@@ -25,7 +25,7 @@ func Test_NewItemWithOpts(t *testing.T) {
 
 	for _, tc := range []struct {
 		uc     string
-		opts   []ItemOption[string, int]
+		opts   []itemOption[string, int]
 		assert func(t *testing.T, item *Item[string, int])
 	}{
 		{
@@ -39,8 +39,8 @@ func Test_NewItemWithOpts(t *testing.T) {
 		},
 		{
 			uc: "item with version tracking disabled",
-			opts: []ItemOption[string, int]{
-				WithVersionTracking[string, int](false),
+			opts: []itemOption[string, int]{
+				withVersionTracking[string, int](false),
 			},
 			assert: func(t *testing.T, item *Item[string, int]) {
 				assert.Equal(t, int64(-1), item.version)
@@ -51,8 +51,8 @@ func Test_NewItemWithOpts(t *testing.T) {
 		},
 		{
 			uc: "item with version tracking explicitly enabled",
-			opts: []ItemOption[string, int]{
-				WithVersionTracking[string, int](true),
+			opts: []itemOption[string, int]{
+				withVersionTracking[string, int](true),
 			},
 			assert: func(t *testing.T, item *Item[string, int]) {
 				assert.Equal(t, int64(0), item.version)
@@ -63,8 +63,8 @@ func Test_NewItemWithOpts(t *testing.T) {
 		},
 		{
 			uc: "item with cost calculation",
-			opts: []ItemOption[string, int]{
-				WithCostFunc[string, int](func(item *Item[string, int]) uint64 { return 5 }),
+			opts: []itemOption[string, int]{
+				withCostFunc[string, int](func(item *Item[string, int]) uint64 { return 5 }),
 			},
 			assert: func(t *testing.T, item *Item[string, int]) {
 				assert.Equal(t, int64(0), item.version)
@@ -75,7 +75,7 @@ func Test_NewItemWithOpts(t *testing.T) {
 		},
 	} {
 		t.Run(tc.uc, func(t *testing.T) {
-			item := NewItemWithOpts("key", 123, time.Hour, tc.opts...)
+			item := newItemWithOpts("key", 123, time.Hour, tc.opts...)
 			require.NotNil(t, item)
 			assert.Equal(t, "key", item.key)
 			assert.Equal(t, 123, item.value)
@@ -94,7 +94,7 @@ func Test_Item_update(t *testing.T) {
 
 	for _, tc := range []struct {
 		uc     string
-		opts   []ItemOption[string, string]
+		opts   []itemOption[string, string]
 		ttl    time.Duration
 		assert func(t *testing.T, item *Item[string, string])
 	}{
@@ -135,8 +135,8 @@ func Test_Item_update(t *testing.T) {
 		},
 		{
 			uc: "without version tracking",
-			opts: []ItemOption[string, string]{
-				WithVersionTracking[string, string](false),
+			opts: []itemOption[string, string]{
+				withVersionTracking[string, string](false),
 			},
 			ttl: time.Hour,
 			assert: func(t *testing.T, item *Item[string, string]) {
@@ -150,9 +150,9 @@ func Test_Item_update(t *testing.T) {
 		},
 		{
 			uc: "with version calculation and version tracking",
-			opts: []ItemOption[string, string]{
-				WithVersionTracking[string, string](true),
-				WithCostFunc[string, string](func(item *Item[string, string]) uint64 { return uint64(len(item.value)) }),
+			opts: []itemOption[string, string]{
+				withVersionTracking[string, string](true),
+				withCostFunc[string, string](func(item *Item[string, string]) uint64 { return uint64(len(item.value)) }),
 			},
 			ttl: time.Hour,
 			assert: func(t *testing.T, item *Item[string, string]) {
@@ -166,7 +166,7 @@ func Test_Item_update(t *testing.T) {
 		},
 	} {
 		t.Run(tc.uc, func(t *testing.T) {
-			item := NewItemWithOpts[string, string]("test", "hello", initialTTL, tc.opts...)
+			item := newItemWithOpts[string, string]("test", "hello", initialTTL, tc.opts...)
 
 			item.update(newValue, tc.ttl)
 
