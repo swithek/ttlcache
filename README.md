@@ -145,7 +145,7 @@ func main() {
 To restrict the cache's capacity based on criteria beyond the number
 of items it can hold, the `ttlcache.WithMaxCost` option allows for
 implementing custom strategies. The following example demonstrates
-how to limit the maximum memory usage of a cache to 5MB:
+how to limit the maximum memory usage of a cache to 5KiB:
 ```go
 import (
     "github.com/jellydator/ttlcache"
