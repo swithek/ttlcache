@@ -106,7 +106,7 @@ func Test_WithMaxCost(t *testing.T) {
 	assert.Equal(t, uint64(1), item.calculateCost(&item))
 }
 
-func Test_WithVersionTracking(t *testing.T) {
+func Test_withVersionTracking(t *testing.T) {
 	t.Parallel()
 
 	var item Item[string, string]
@@ -120,7 +120,7 @@ func Test_WithVersionTracking(t *testing.T) {
 	assert.Equal(t, int64(0), item.version)
 }
 
-func Test_WithCostFunc(t *testing.T) {
+func Test_withCostFunc(t *testing.T) {
 	t.Parallel()
 
 	var item Item[string, string]

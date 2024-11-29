@@ -20,7 +20,7 @@ func Test_NewItem(t *testing.T) {
 	assert.WithinDuration(t, time.Now().Add(time.Hour), item.expiresAt, time.Minute)
 }
 
-func Test_NewItemWithOpts(t *testing.T) {
+func Test_newItemWithOpts(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
