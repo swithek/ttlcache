@@ -122,7 +122,6 @@ func withCostFunc[K comparable, V any](costFunc CostFunc[K, V]) itemOption[K, V]
 	return itemOptionFunc[K, V](func(item *Item[K, V]) {
 		if costFunc != nil {
 			item.calculateCost = costFunc
-			item.cost = costFunc(item)
 		}
 	})
 }

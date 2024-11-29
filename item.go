@@ -60,6 +60,7 @@ func newItemWithOpts[K comparable, V any](key K, value V, ttl time.Duration, opt
 	}
 
 	item.touch()
+	item.cost = item.calculateCost(item)
 
 	return item
 }
