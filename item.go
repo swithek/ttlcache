@@ -52,6 +52,7 @@ func newItemWithOpts[K comparable, V any](key K, value V, ttl time.Duration, opt
 		key:           key,
 		value:         value,
 		ttl:           ttl,
+		version:       -1,
 		calculateCost: func(item *Item[K, V]) uint64 { return 0 },
 	}
 

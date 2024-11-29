@@ -31,7 +31,7 @@ func Test_newItemWithOpts(t *testing.T) {
 		{
 			uc: "item without any options",
 			assert: func(t *testing.T, item *Item[string, int]) {
-				assert.Equal(t, int64(0), item.version)
+				assert.Equal(t, int64(-1), item.version)
 				assert.Equal(t, uint64(0), item.cost)
 				require.NotNil(t, item.calculateCost)
 				assert.Equal(t, uint64(0), item.calculateCost(item))
@@ -67,7 +67,7 @@ func Test_newItemWithOpts(t *testing.T) {
 				withCostFunc[string, int](func(item *Item[string, int]) uint64 { return 5 }),
 			},
 			assert: func(t *testing.T, item *Item[string, int]) {
-				assert.Equal(t, int64(0), item.version)
+				assert.Equal(t, int64(-1), item.version)
 				assert.Equal(t, uint64(5), item.cost)
 				require.NotNil(t, item.calculateCost)
 				assert.Equal(t, uint64(5), item.calculateCost(item))
@@ -106,7 +106,7 @@ func Test_Item_update(t *testing.T) {
 
 				assert.Equal(t, uint64(0), item.cost)
 				assert.Equal(t, time.Hour, item.ttl)
-				assert.Equal(t, int64(1), item.version)
+				assert.Equal(t, int64(-1), item.version)
 				assert.WithinDuration(t, time.Now().Add(time.Hour), item.expiresAt, time.Minute)
 			},
 		},
@@ -118,7 +118,7 @@ func Test_Item_update(t *testing.T) {
 
 				assert.Equal(t, uint64(0), item.cost)
 				assert.Equal(t, initialTTL, item.ttl)
-				assert.Equal(t, int64(1), item.version)
+				assert.Equal(t, int64(-1), item.version)
 			},
 		},
 		{
@@ -129,12 +129,12 @@ func Test_Item_update(t *testing.T) {
 
 				assert.Equal(t, uint64(0), item.cost)
 				assert.Equal(t, NoTTL, item.ttl)
-				assert.Equal(t, int64(1), item.version)
+				assert.Equal(t, int64(-1), item.version)
 				assert.Zero(t, item.expiresAt)
 			},
 		},
 		{
-			uc: "without version tracking",
+			uc: "with version tracking explicitly disabled",
 			opts: []itemOption[string, string]{
 				withVersionTracking[string, string](false),
 			},
