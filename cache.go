@@ -15,6 +15,7 @@ const (
 	EvictionReasonDeleted EvictionReason = iota + 1
 	EvictionReasonCapacityReached
 	EvictionReasonExpired
+	EvictionReasonMaxCostExceeded
 )
 
 // EvictionReason is used to specify why a certain item was
@@ -36,6 +37,7 @@ type Cache[K comparable, V any] struct {
 
 		timerCh chan time.Duration
 	}
+	cost uint64
 
 	metricsMu sync.RWMutex
 	metrics   Metrics
@@ -137,8 +139,19 @@ func (c *Cache[K, V]) set(key K, value V, ttl time.Duration) *Item[K, V] {
 	if elem != nil {
 		// update/overwrite an existing item
 		item := elem.Value.(*Item[K, V])
+		oldItemCost := item.cost
+
 		item.update(value, ttl)
+
 		c.updateExpirations(false, elem)
+
+		if c.options.maxCost != 0 {
+			c.cost = c.cost - oldItemCost + item.cost
+
+			for c.cost > c.options.maxCost {
+				c.evict(EvictionReasonMaxCostExceeded, c.items.lru.Back())
+			}
+		}
 
 		return item
 	}
@@ -153,10 +166,18 @@ func (c *Cache[K, V]) set(key K, value V, ttl time.Duration) *Item[K, V] {
 	}
 
 	// create a new item
-	item := NewItem(key, value, ttl, c.options.enableVersionTracking)
+	item := newItemWithOpts(key, value, ttl, c.options.itemOpts...)
 	elem = c.items.lru.PushFront(item)
 	c.items.values[key] = elem
 	c.updateExpirations(true, elem)
+
+	if c.options.maxCost != 0 {
+		c.cost += item.cost
+
+		for c.cost > c.options.maxCost {
+			c.evict(EvictionReasonMaxCostExceeded, c.items.lru.Back())
+		}
+	}
 
 	c.metricsMu.Lock()
 	c.metrics.Insertions++
@@ -258,6 +279,11 @@ func (c *Cache[K, V]) evict(reason EvictionReason, elems ...*list.Element) {
 		for i := range elems {
 			item := elems[i].Value.(*Item[K, V])
 			delete(c.items.values, item.key)
+
+			if c.options.maxCost != 0 {
+				c.cost -= item.cost
+			}
+
 			c.items.lru.Remove(elems[i])
 			c.items.expQueue.remove(elems[i])
 

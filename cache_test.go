@@ -122,7 +122,7 @@ func Test_Cache_updateExpirations(t *testing.T) {
 		t.Run(cn, func(t *testing.T) {
 			t.Parallel()
 
-			cache := prepCache(time.Hour)
+			cache := prepCache(0, time.Hour)
 
 			if c.TimerChValue > 0 {
 				cache.items.timerCh <- c.TimerChValue
@@ -172,6 +172,7 @@ func Test_Cache_set(t *testing.T) {
 
 	cc := map[string]struct {
 		Capacity  uint64
+		MaxCost   uint64
 		Key       string
 		TTL       time.Duration
 		Metrics   Metrics
@@ -244,6 +245,33 @@ func Test_Cache_set(t *testing.T) {
 			},
 			ExpectFns: true,
 		},
+		"Set with existing key and eviction caused by exhausted cost": {
+			MaxCost: 30,
+			Key:     existingKey,
+			TTL:     DefaultTTL,
+			Metrics: Metrics{
+				Insertions: 0,
+				Evictions:  1,
+			},
+		},
+		"Set with existing key and no eviction": {
+			MaxCost: 50,
+			Key:     existingKey,
+			TTL:     DefaultTTL,
+			Metrics: Metrics{
+				Insertions: 0,
+				Evictions:  0,
+			},
+		},
+		"Set with new key and eviction caused by exhausted cost": {
+			MaxCost: 40,
+			Key:     newKey,
+			TTL:     DefaultTTL,
+			Metrics: Metrics{
+				Insertions: 1,
+				Evictions:  1,
+			},
+		},
 	}
 
 	for cn, c := range cc {
@@ -260,7 +288,7 @@ func Test_Cache_set(t *testing.T) {
 			// calculated based on how addToCache sets ttl
 			existingKeyTTL := time.Hour + time.Minute
 
-			cache := prepCache(time.Hour, evictedKey, existingKey, "test3")
+			cache := prepCache(c.MaxCost, time.Hour, evictedKey, existingKey, "test3")
 			cache.options.capacity = c.Capacity
 			cache.options.ttl = time.Minute * 20
 			cache.events.insertion.fns[1] = func(item *Item[string, string]) {
@@ -269,16 +297,18 @@ func Test_Cache_set(t *testing.T) {
 			}
 			cache.events.insertion.fns[2] = cache.events.insertion.fns[1]
 			cache.events.eviction.fns[1] = func(r EvictionReason, item *Item[string, string]) {
-				assert.Equal(t, EvictionReasonCapacityReached, r)
+				if c.MaxCost != 0 {
+					assert.Equal(t, EvictionReasonMaxCostExceeded, r)
+				} else {
+					assert.Equal(t, EvictionReasonCapacityReached, r)
+				}
+
 				assert.Equal(t, evictedKey, item.key)
 				evictionFnsCalls++
 			}
 			cache.events.eviction.fns[2] = cache.events.eviction.fns[1]
 
-			total := 3
-			if c.Key == newKey && (c.Capacity == 0 || c.Capacity >= 4) {
-				total++
-			}
+			total := 3 - int(c.Metrics.Evictions) + int(c.Metrics.Insertions)
 
 			item := cache.set(c.Key, "value123", c.TTL)
 
@@ -390,7 +420,7 @@ func Test_Cache_get(t *testing.T) {
 		t.Run(cn, func(t *testing.T) {
 			t.Parallel()
 
-			cache := prepCache(time.Hour, existingKey, "test2", "test3")
+			cache := prepCache(0, time.Hour, existingKey, "test2", "test3")
 			addToCache(cache, time.Nanosecond, expiredKey)
 			time.Sleep(time.Millisecond) // force expiration
 
@@ -441,7 +471,7 @@ func Test_Cache_evict(t *testing.T) {
 		key4FnsCalls int
 	)
 
-	cache := prepCache(time.Hour, "1", "2", "3", "4")
+	cache := prepCache(0, time.Hour, "1", "2", "3", "4")
 	cache.events.eviction.fns[1] = func(r EvictionReason, item *Item[string, string]) {
 		assert.Equal(t, EvictionReasonDeleted, r)
 		switch item.key {
@@ -486,7 +516,7 @@ func Test_Cache_evict(t *testing.T) {
 }
 
 func Test_Cache_Set(t *testing.T) {
-	cache := prepCache(time.Hour, "test1", "test2", "test3")
+	cache := prepCache(0, time.Hour, "test1", "test2", "test3")
 	item := cache.Set("hello", "value123", time.Minute)
 	require.NotNil(t, item)
 	assert.Same(t, item, cache.items.values["hello"].Value)
@@ -599,7 +629,7 @@ func Test_Cache_Get(t *testing.T) {
 		t.Run(cn, func(t *testing.T) {
 			t.Parallel()
 
-			cache := prepCache(time.Minute, foundKey, "test2", "test3")
+			cache := prepCache(0, time.Minute, foundKey, "test2", "test3")
 			oldExpiresAt := cache.items.values[foundKey].Value.(*Item[string, string]).expiresAt
 			cache.options = c.DefaultOptions
 
@@ -632,7 +662,7 @@ func Test_Cache_Get(t *testing.T) {
 func Test_Cache_Delete(t *testing.T) {
 	var fnsCalls int
 
-	cache := prepCache(time.Hour, "1", "2", "3", "4")
+	cache := prepCache(0, time.Hour, "1", "2", "3", "4")
 	cache.events.eviction.fns[1] = func(r EvictionReason, item *Item[string, string]) {
 		assert.Equal(t, EvictionReasonDeleted, r)
 		fnsCalls++
@@ -652,7 +682,7 @@ func Test_Cache_Delete(t *testing.T) {
 }
 
 func Test_Cache_Has(t *testing.T) {
-	cache := prepCache(time.Hour, "1")
+	cache := prepCache(0, time.Hour, "1")
 	addToCache(cache, time.Nanosecond, "2")
 
 	assert.True(t, cache.Has("1"))
@@ -661,7 +691,7 @@ func Test_Cache_Has(t *testing.T) {
 }
 
 func Test_Cache_GetOrSet(t *testing.T) {
-	cache := prepCache(time.Hour)
+	cache := prepCache(0, time.Hour)
 	item, retrieved := cache.GetOrSet("test", "1", WithTTL[string, string](time.Minute))
 	require.NotNil(t, item)
 	assert.Same(t, item, cache.items.values["test"].Value)
@@ -685,7 +715,7 @@ func Test_Cache_GetOrSet(t *testing.T) {
 }
 
 func Test_Cache_GetAndDelete(t *testing.T) {
-	cache := prepCache(time.Hour, "test1", "test2", "test3")
+	cache := prepCache(0, time.Hour, "test1", "test2", "test3")
 	listItem := cache.items.lru.Front()
 	require.NotNil(t, listItem)
 	assert.Same(t, listItem, cache.items.values["test3"])
@@ -721,7 +751,7 @@ func Test_Cache_DeleteAll(t *testing.T) {
 		key4FnsCalls int
 	)
 
-	cache := prepCache(time.Hour, "1", "2", "3", "4")
+	cache := prepCache(0, time.Hour, "1", "2", "3", "4")
 	cache.events.eviction.fns[1] = func(r EvictionReason, item *Item[string, string]) {
 		assert.Equal(t, EvictionReasonDeleted, r)
 		switch item.key {
@@ -751,7 +781,7 @@ func Test_Cache_DeleteExpired(t *testing.T) {
 		key2FnsCalls int
 	)
 
-	cache := prepCache(time.Hour)
+	cache := prepCache(0, time.Hour)
 	cache.events.eviction.fns[1] = func(r EvictionReason, item *Item[string, string]) {
 		assert.Equal(t, EvictionReasonExpired, r)
 		switch item.key {
@@ -792,7 +822,7 @@ func Test_Cache_DeleteExpired(t *testing.T) {
 }
 
 func Test_Cache_Touch(t *testing.T) {
-	cache := prepCache(time.Hour, "1", "2")
+	cache := prepCache(0, time.Hour, "1", "2")
 	oldExpiresAt := cache.items.values["1"].Value.(*Item[string, string]).expiresAt
 
 	cache.Touch("1")
@@ -803,7 +833,7 @@ func Test_Cache_Touch(t *testing.T) {
 }
 
 func Test_Cache_Len(t *testing.T) {
-	cache := prepCache(time.Hour)
+	cache := prepCache(0, time.Hour)
 	assert.Equal(t, 0, cache.Len())
 
 	addToCache(cache, time.Hour, "1")
@@ -820,13 +850,13 @@ func Test_Cache_Len(t *testing.T) {
 }
 
 func Test_Cache_Keys(t *testing.T) {
-	cache := prepCache(time.Hour, "1", "2", "3")
+	cache := prepCache(0, time.Hour, "1", "2", "3")
 	addToCache(cache, time.Nanosecond, "4")
 	assert.ElementsMatch(t, []string{"1", "2", "3"}, cache.Keys())
 }
 
 func Test_Cache_Items(t *testing.T) {
-	cache := prepCache(time.Hour, "1", "2", "3")
+	cache := prepCache(0, time.Hour, "1", "2", "3")
 	addToCache(cache, time.Nanosecond, "4")
 	items := cache.Items()
 	require.Len(t, items, 3)
@@ -840,7 +870,7 @@ func Test_Cache_Items(t *testing.T) {
 }
 
 func Test_Cache_Range(t *testing.T) {
-	c := prepCache(DefaultTTL, "1", "2", "3", "4", "5")
+	c := prepCache(0, DefaultTTL, "1", "2", "3", "4", "5")
 	addToCache(c, time.Nanosecond, "6")
 	var results []string
 
@@ -860,7 +890,7 @@ func Test_Cache_Range(t *testing.T) {
 }
 
 func Test_Cache_RangeBackwards(t *testing.T) {
-	c := prepCache(DefaultTTL)
+	c := prepCache(0, DefaultTTL)
 	addToCache(c, time.Nanosecond, "1")
 	addToCache(c, time.Hour, "2", "3", "4", "5")
 
@@ -890,7 +920,7 @@ func Test_Cache_Metrics(t *testing.T) {
 }
 
 func Test_Cache_Start(t *testing.T) {
-	cache := prepCache(0)
+	cache := prepCache(0, 0)
 	cache.stopCh = make(chan struct{})
 
 	addToCache(cache, time.Nanosecond, "1")
@@ -938,7 +968,7 @@ func Test_Cache_Stop(t *testing.T) {
 func Test_Cache_OnInsertion(t *testing.T) {
 	checkCh := make(chan struct{})
 	resCh := make(chan struct{})
-	cache := prepCache(time.Hour)
+	cache := prepCache(0, time.Hour)
 	del1 := cache.OnInsertion(func(_ context.Context, _ *Item[string, string]) {
 		checkCh <- struct{}{}
 	})
@@ -1022,7 +1052,7 @@ func Test_Cache_OnInsertion(t *testing.T) {
 func Test_Cache_OnEviction(t *testing.T) {
 	checkCh := make(chan struct{})
 	resCh := make(chan struct{})
-	cache := prepCache(time.Hour)
+	cache := prepCache(0, time.Hour)
 	del1 := cache.OnEviction(func(_ context.Context, _ EvictionReason, _ *Item[string, string]) {
 		checkCh <- struct{}{}
 	})
@@ -1181,7 +1211,7 @@ func Test_SuppressedLoader_Load(t *testing.T) {
 		item1, item2 *Item[string, string]
 	)
 
-	cache := prepCache(time.Hour)
+	cache := prepCache(0, time.Hour)
 
 	// nil result
 	wg.Add(2)
@@ -1228,9 +1258,20 @@ func Test_SuppressedLoader_Load(t *testing.T) {
 	assert.Equal(t, 1, loadCalls)
 }
 
-func prepCache(ttl time.Duration, keys ...string) *Cache[string, string] {
+func prepCache(maxCost uint64, ttl time.Duration, keys ...string) *Cache[string, string] {
 	c := &Cache[string, string]{}
 	c.options.ttl = ttl
+	c.options.itemOpts = append(c.options.itemOpts,
+		withVersionTracking[string, string](false))
+
+	if maxCost != 0 {
+		c.options.maxCost = maxCost
+		c.options.itemOpts = append(c.options.itemOpts,
+			withCostFunc[string, string](func(item *Item[string, string]) uint64 {
+				return uint64(len(item.value))
+			}))
+	}
+
 	c.items.values = make(map[string]*list.Element)
 	c.items.lru = list.New()
 	c.items.expQueue = newExpirationQueue[string, string]()
@@ -1245,14 +1286,19 @@ func prepCache(ttl time.Duration, keys ...string) *Cache[string, string] {
 
 func addToCache(c *Cache[string, string], ttl time.Duration, keys ...string) {
 	for i, key := range keys {
-		item := NewItem(
+		value := fmt.Sprint("value of", key)
+		item := newItemWithOpts(
 			key,
-			fmt.Sprint("value of", key),
+			value,
 			ttl+time.Duration(i)*time.Minute,
-			false,
+			c.options.itemOpts...,
 		)
 		elem := c.items.lru.PushFront(item)
 		c.items.values[key] = elem
 		c.items.expQueue.push(elem)
+
+		if c.options.maxCost != 0 {
+			c.cost += item.cost
+		}
 	}
 }
