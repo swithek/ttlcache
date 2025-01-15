@@ -582,16 +582,14 @@ func (c *Cache[K, V]) RangeBackwards(fn func(item *Item[K, V]) bool) {
 	for item := c.items.lru.Back(); item != c.items.lru.Front().Prev(); item = item.Prev() {
 		i := item.Value.(*Item[K, V])
 		expired := i.isExpiredUnsafe()
-		c.items.mu.RUnlock()
-
+		c.items.mu.RUnlock() // unlock mutex so fn func can access it (if it needs to)
 		if !expired && !fn(i) {
 			return
 		}
-
-		if item.Prev() != nil {
-			c.items.mu.RLock()
-		}
+		c.items.mu.RLock()
 	}
+
+	c.items.mu.RUnlock()
 }
 
 // Metrics returns the metrics of the cache.
