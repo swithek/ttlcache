@@ -19,6 +19,7 @@ func (fn optionFunc[K, V]) apply(opts *options[K, V]) {
 type options[K comparable, V any] struct {
 	capacity              uint64
 	ttl                   time.Duration
+	shards                uint64
 	loader                Loader[K, V]
 	disableTouchOnHit     bool
 	enableVersionTracking bool
@@ -44,6 +45,12 @@ func WithCapacity[K comparable, V any](c uint64) Option[K, V] {
 func WithTTL[K comparable, V any](ttl time.Duration) Option[K, V] {
 	return optionFunc[K, V](func(opts *options[K, V]) {
 		opts.ttl = ttl
+	})
+}
+
+func WithShards[K comparable, V any](s uint64) Option[K, V] {
+	return optionFunc[K, V](func(opts *options[K, V]) {
+		opts.shards = s
 	})
 }
 

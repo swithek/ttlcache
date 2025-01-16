@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dolthub/maphash"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -24,18 +25,8 @@ type EvictionReason int
 // Cache is a synchronised map of items that are automatically removed
 // when they expire or the capacity is reached.
 type Cache[K comparable, V any] struct {
-	items struct {
-		mu     sync.RWMutex
-		values map[K]*list.Element
-
-		// a generic doubly linked list would be more convenient
-		// (and more performant?). It's possible that this
-		// will be introduced with/in go1.19+
-		lru      *list.List
-		expQueue expirationQueue[K, V]
-
-		timerCh chan time.Duration
-	}
+	hasher maphash.Hasher[K]
+	shards []*Shard[K, V]
 
 	metricsMu sync.RWMutex
 	metrics   Metrics
@@ -60,233 +51,39 @@ type Cache[K comparable, V any] struct {
 // New creates a new instance of cache.
 func New[K comparable, V any](opts ...Option[K, V]) *Cache[K, V] {
 	c := &Cache[K, V]{
+		hasher: maphash.NewHasher[K](),
 		stopCh: make(chan struct{}),
 	}
-	c.items.values = make(map[K]*list.Element)
-	c.items.lru = list.New()
-	c.items.expQueue = newExpirationQueue[K, V]()
-	c.items.timerCh = make(chan time.Duration, 1) // buffer is important
+
 	c.events.insertion.fns = make(map[uint64]func(*Item[K, V]))
 	c.events.eviction.fns = make(map[uint64]func(EvictionReason, *Item[K, V]))
+	c.options.shards = 1
 
 	applyOptions(&c.options, opts...)
+
+	c.shards = make([]*Shard[K, V], c.options.shards)
+
+	for i := 0; i < int(c.options.shards); i++ {
+		c.shards[i] = &Shard[K, V]{
+			c:        c,
+			values:   make(map[K]*list.Element),
+			lru:      list.New(),
+			expQueue: newExpirationQueue[K, V](),
+			timerCh:  make(chan time.Duration, 1), // buffer is important
+			stopCh:   make(chan struct{}),
+		}
+	}
 
 	return c
 }
 
-// updateExpirations updates the expiration queue and notifies
-// the cache auto cleaner if needed.
-// Not safe for concurrent use by multiple goroutines without additional
-// locking.
-func (c *Cache[K, V]) updateExpirations(fresh bool, elem *list.Element) {
-	var oldExpiresAt time.Time
-
-	if !c.items.expQueue.isEmpty() {
-		oldExpiresAt = c.items.expQueue[0].Value.(*Item[K, V]).expiresAt
+// shard returns a shard for the provided key.
+func (c *Cache[K, V]) shard(key K) *Shard[K, V] {
+	if len(c.shards) == 1 {
+		return c.shards[0]
 	}
 
-	if fresh {
-		c.items.expQueue.push(elem)
-	} else {
-		c.items.expQueue.update(elem)
-	}
-
-	newExpiresAt := c.items.expQueue[0].Value.(*Item[K, V]).expiresAt
-
-	// check if the closest/soonest expiration timestamp changed
-	if newExpiresAt.IsZero() || (!oldExpiresAt.IsZero() && !newExpiresAt.Before(oldExpiresAt)) {
-		return
-	}
-
-	d := time.Until(newExpiresAt)
-
-	// It's possible that the auto cleaner isn't active or
-	// is busy, so we need to drain the channel before
-	// sending a new value.
-	// Also, since this method is called after locking the items' mutex,
-	// we can be sure that there is no other concurrent call of this
-	// method
-	if len(c.items.timerCh) > 0 {
-		// we need to drain this channel in a select with a default
-		// case because it's possible that the auto cleaner
-		// read this channel just after we entered this if
-		select {
-		case d1 := <-c.items.timerCh:
-			if d1 < d {
-				d = d1
-			}
-		default:
-		}
-	}
-
-	// since the channel has a size 1 buffer, we can be sure
-	// that the line below won't block (we can't overfill the buffer
-	// because we just drained it)
-	c.items.timerCh <- d
-}
-
-// set creates a new item, adds it to the cache and then returns it.
-// Not safe for concurrent use by multiple goroutines without additional
-// locking.
-func (c *Cache[K, V]) set(key K, value V, ttl time.Duration) *Item[K, V] {
-	if ttl == DefaultTTL {
-		ttl = c.options.ttl
-	}
-
-	elem := c.get(key, false)
-	if elem != nil {
-		// update/overwrite an existing item
-		item := elem.Value.(*Item[K, V])
-		item.update(value, ttl)
-		c.updateExpirations(false, elem)
-
-		return item
-	}
-
-	if c.options.capacity != 0 && uint64(len(c.items.values)) >= c.options.capacity {
-		// delete the oldest item
-		c.evict(EvictionReasonCapacityReached, c.items.lru.Back())
-	}
-
-	if ttl == PreviousOrDefaultTTL {
-		ttl = c.options.ttl
-	}
-
-	// create a new item
-	item := newItem(key, value, ttl, c.options.enableVersionTracking)
-	elem = c.items.lru.PushFront(item)
-	c.items.values[key] = elem
-	c.updateExpirations(true, elem)
-
-	c.metricsMu.Lock()
-	c.metrics.Insertions++
-	c.metricsMu.Unlock()
-
-	c.events.insertion.mu.RLock()
-	for _, fn := range c.events.insertion.fns {
-		fn(item)
-	}
-	c.events.insertion.mu.RUnlock()
-
-	return item
-}
-
-// get retrieves an item from the cache and extends its expiration
-// time if 'touch' is set to true.
-// It returns nil if the item is not found or is expired.
-// Not safe for concurrent use by multiple goroutines without additional
-// locking.
-func (c *Cache[K, V]) get(key K, touch bool) *list.Element {
-	elem := c.items.values[key]
-	if elem == nil {
-		return nil
-	}
-
-	item := elem.Value.(*Item[K, V])
-	if item.isExpiredUnsafe() {
-		return nil
-	}
-
-	c.items.lru.MoveToFront(elem)
-
-	if touch && item.ttl > 0 {
-		item.touch()
-		c.updateExpirations(false, elem)
-	}
-
-	return elem
-}
-
-// getWithOpts wraps the get method, applies the given options, and updates
-// the metrics.
-// It returns nil if the item is not found or is expired.
-// If 'lockAndLoad' is set to true, the mutex is locked before calling the
-// get method and unlocked after it returns. It also indicates that the
-// loader should be used to load external data when the get method returns
-// a nil value and the mutex is unlocked.
-// If 'lockAndLoad' is set to false, neither the mutex nor the loader is
-// used.
-func (c *Cache[K, V]) getWithOpts(key K, lockAndLoad bool, opts ...Option[K, V]) *Item[K, V] {
-	getOpts := options[K, V]{
-		loader:            c.options.loader,
-		disableTouchOnHit: c.options.disableTouchOnHit,
-	}
-
-	applyOptions(&getOpts, opts...)
-
-	if lockAndLoad {
-		c.items.mu.Lock()
-	}
-
-	elem := c.get(key, !getOpts.disableTouchOnHit)
-
-	if lockAndLoad {
-		c.items.mu.Unlock()
-	}
-
-	if elem == nil {
-		c.metricsMu.Lock()
-		c.metrics.Misses++
-		c.metricsMu.Unlock()
-
-		if lockAndLoad && getOpts.loader != nil {
-			return getOpts.loader.Load(c, key)
-		}
-
-		return nil
-	}
-
-	c.metricsMu.Lock()
-	c.metrics.Hits++
-	c.metricsMu.Unlock()
-
-	return elem.Value.(*Item[K, V])
-}
-
-// evict deletes items from the cache.
-// If no items are provided, all currently present cache items
-// are evicted.
-// Not safe for concurrent use by multiple goroutines without additional
-// locking.
-func (c *Cache[K, V]) evict(reason EvictionReason, elems ...*list.Element) {
-	if len(elems) > 0 {
-		c.metricsMu.Lock()
-		c.metrics.Evictions += uint64(len(elems))
-		c.metricsMu.Unlock()
-
-		c.events.eviction.mu.RLock()
-		for i := range elems {
-			item := elems[i].Value.(*Item[K, V])
-			delete(c.items.values, item.key)
-			c.items.lru.Remove(elems[i])
-			c.items.expQueue.remove(elems[i])
-
-			for _, fn := range c.events.eviction.fns {
-				fn(reason, item)
-			}
-		}
-		c.events.eviction.mu.RUnlock()
-
-		return
-	}
-
-	c.metricsMu.Lock()
-	c.metrics.Evictions += uint64(len(c.items.values))
-	c.metricsMu.Unlock()
-
-	c.events.eviction.mu.RLock()
-	for _, elem := range c.items.values {
-		item := elem.Value.(*Item[K, V])
-
-		for _, fn := range c.events.eviction.fns {
-			fn(reason, item)
-		}
-	}
-	c.events.eviction.mu.RUnlock()
-
-	c.items.values = make(map[K]*list.Element)
-	c.items.lru.Init()
-	c.items.expQueue = newExpirationQueue[K, V]()
+	return c.shards[c.hasher.Hash(key)%c.options.shards]
 }
 
 // delete deletes an item by the provided key.
@@ -294,12 +91,14 @@ func (c *Cache[K, V]) evict(reason EvictionReason, elems ...*list.Element) {
 // Not safe for concurrent use by multiple goroutines without additional
 // locking.
 func (c *Cache[K, V]) delete(key K) {
-	elem := c.items.values[key]
+	s := c.shard(key)
+
+	elem := s.values[key]
 	if elem == nil {
 		return
 	}
 
-	c.evict(EvictionReasonDeleted, elem)
+	s.evict(EvictionReasonDeleted, elem)
 }
 
 // Set creates a new item from the provided key and value, adds
@@ -311,10 +110,12 @@ func (c *Cache[K, V]) delete(key K) {
 // the default/global TTL that was specified when the cache instance was
 // created.
 func (c *Cache[K, V]) Set(key K, value V, ttl time.Duration) *Item[K, V] {
-	c.items.mu.Lock()
-	defer c.items.mu.Unlock()
+	s := c.shard(key)
 
-	return c.set(key, value, ttl)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.set(key, value, ttl)
 }
 
 // Get retrieves an item from the cache by the provided key.
@@ -322,24 +123,30 @@ func (c *Cache[K, V]) Set(key K, value V, ttl time.Duration) *Item[K, V] {
 // expiration timestamp on successful retrieval.
 // If the item is not found, a nil value is returned.
 func (c *Cache[K, V]) Get(key K, opts ...Option[K, V]) *Item[K, V] {
-	return c.getWithOpts(key, true, opts...)
+	s := c.shard(key)
+
+	return s.getWithOpts(key, true, opts...)
 }
 
 // Delete deletes an item from the cache. If the item associated with
 // the key is not found, the method is no-op.
 func (c *Cache[K, V]) Delete(key K) {
-	c.items.mu.Lock()
-	defer c.items.mu.Unlock()
+	s := c.shard(key)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	c.delete(key)
 }
 
 // Has checks whether the key exists in the cache.
 func (c *Cache[K, V]) Has(key K) bool {
-	c.items.mu.RLock()
-	defer c.items.mu.RUnlock()
+	s := c.shard(key)
 
-	_, ok := c.items.values[key]
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	_, ok := s.values[key]
 	return ok
 }
 
@@ -351,10 +158,12 @@ func (c *Cache[K, V]) Has(key K) bool {
 // If the loader is non-nil (i.e., used as an option or specified when
 // creating the cache instance), its execution is skipped.
 func (c *Cache[K, V]) GetOrSet(key K, value V, opts ...Option[K, V]) (*Item[K, V], bool) {
-	c.items.mu.Lock()
-	defer c.items.mu.Unlock()
+	s := c.shard(key)
 
-	elem := c.getWithOpts(key, false, opts...)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	elem := s.getWithOpts(key, false, opts...)
 	if elem != nil {
 		return elem, true
 	}
@@ -364,7 +173,7 @@ func (c *Cache[K, V]) GetOrSet(key K, value V, opts ...Option[K, V]) (*Item[K, V
 	}
 	applyOptions(&setOpts, opts...) // used only to update the TTL
 
-	item := c.set(key, value, setOpts.ttl)
+	item := s.set(key, value, setOpts.ttl)
 
 	return item, false
 }
@@ -377,11 +186,13 @@ func (c *Cache[K, V]) GetOrSet(key K, value V, opts ...Option[K, V]) (*Item[K, V
 // creating the cache instance), it is executed normaly, i.e., only when
 // the item is not found.
 func (c *Cache[K, V]) GetAndDelete(key K, opts ...Option[K, V]) (*Item[K, V], bool) {
-	c.items.mu.Lock()
+	s := c.shard(key)
 
-	elem := c.getWithOpts(key, false, opts...)
+	s.mu.Lock()
+
+	elem := s.getWithOpts(key, false, opts...)
 	if elem == nil {
-		c.items.mu.Unlock()
+		s.mu.Unlock()
 
 		getOpts := options[K, V]{
 			loader: c.options.loader,
@@ -397,37 +208,44 @@ func (c *Cache[K, V]) GetAndDelete(key K, opts ...Option[K, V]) (*Item[K, V], bo
 	}
 
 	c.delete(key)
-	c.items.mu.Unlock()
+	s.mu.Unlock()
 
 	return elem, true
 }
 
 // DeleteAll deletes all items from the cache.
+// TODO?.
 func (c *Cache[K, V]) DeleteAll() {
-	c.items.mu.Lock()
-	c.evict(EvictionReasonDeleted)
-	c.items.mu.Unlock()
+	for _, s := range c.shards {
+		s.mu.Lock()
+		s.evict(EvictionReasonDeleted)
+		s.mu.Unlock()
+	}
 }
 
 // DeleteExpired deletes all expired items from the cache.
+// TODO?.
 func (c *Cache[K, V]) DeleteExpired() {
-	c.items.mu.Lock()
-	defer c.items.mu.Unlock()
+	for _, s := range c.shards {
+		s.mu.Lock()
 
-	if c.items.expQueue.isEmpty() {
-		return
-	}
-
-	e := c.items.expQueue[0]
-	for e.Value.(*Item[K, V]).isExpiredUnsafe() {
-		c.evict(EvictionReasonExpired, e)
-
-		if c.items.expQueue.isEmpty() {
-			break
+		if s.expQueue.isEmpty() {
+			s.mu.Unlock()
+			continue
 		}
 
-		// expiration queue has a new root
-		e = c.items.expQueue[0]
+		e := s.expQueue[0]
+		for e.Value.(*Item[K, V]).isExpiredUnsafe() {
+			s.evict(EvictionReasonExpired, e)
+
+			if s.expQueue.isEmpty() {
+				break
+			}
+
+			// expiration queue has a new root
+			e = s.expQueue[0]
+		}
+		s.mu.Unlock()
 	}
 }
 
@@ -435,27 +253,38 @@ func (c *Cache[K, V]) DeleteExpired() {
 // Its main purpose is to extend an item's expiration timestamp.
 // If the item is not found, the method is no-op.
 func (c *Cache[K, V]) Touch(key K) {
-	c.items.mu.Lock()
-	c.get(key, true)
-	c.items.mu.Unlock()
+	s := c.shard(key)
+
+	s.mu.Lock()
+	s.get(key, true)
+	s.mu.Unlock()
 }
 
 // Len returns the total number of items in the cache.
+// TODO.
 func (c *Cache[K, V]) Len() int {
-	c.items.mu.RLock()
-	defer c.items.mu.RUnlock()
+	total := 0
 
-	return len(c.items.values)
+	for _, s := range c.shards {
+		s.mu.RLock()
+		total += len(s.values)
+		s.mu.RUnlock()
+	}
+
+	return total
+
 }
 
 // Keys returns all keys currently present in the cache.
+// TODO.
 func (c *Cache[K, V]) Keys() []K {
-	c.items.mu.RLock()
-	defer c.items.mu.RUnlock()
-
-	res := make([]K, 0, len(c.items.values))
-	for k := range c.items.values {
-		res = append(res, k)
+	var res []K
+	for _, s := range c.shards {
+		s.mu.RLock()
+		for k := range s.values {
+			res = append(res, k)
+		}
+		s.mu.RUnlock()
 	}
 
 	return res
@@ -463,16 +292,18 @@ func (c *Cache[K, V]) Keys() []K {
 
 // Items returns a copy of all items in the cache.
 // It does not update any expiration timestamps.
+// TODO.
 func (c *Cache[K, V]) Items() map[K]*Item[K, V] {
-	c.items.mu.RLock()
-	defer c.items.mu.RUnlock()
-
-	items := make(map[K]*Item[K, V], len(c.items.values))
-	for k := range c.items.values {
-		item := c.get(k, false)
-		if item != nil {
-			items[k] = item.Value.(*Item[K, V])
+	items := make(map[K]*Item[K, V])
+	for _, s := range c.shards {
+		s.mu.RLock()
+		for k := range s.values {
+			item := s.get(k, false)
+			if item != nil {
+				items[k] = item.Value.(*Item[K, V])
+			}
 		}
+		s.mu.RUnlock()
 	}
 
 	return items
@@ -480,25 +311,28 @@ func (c *Cache[K, V]) Items() map[K]*Item[K, V] {
 
 // Range calls fn for each item present in the cache. If fn returns false,
 // Range stops the iteration.
+// TODO.
 func (c *Cache[K, V]) Range(fn func(item *Item[K, V]) bool) {
-	c.items.mu.RLock()
+	for _, s := range c.shards {
+		s.mu.RLock()
 
-	// Check if cache is empty
-	if c.items.lru.Len() == 0 {
-		c.items.mu.RUnlock()
-		return
-	}
-
-	for item := c.items.lru.Front(); item != c.items.lru.Back().Next(); item = item.Next() {
-		i := item.Value.(*Item[K, V])
-		c.items.mu.RUnlock()
-
-		if !fn(i) {
-			return
+		// Check if cache is empty
+		if s.lru.Len() == 0 {
+			s.mu.RUnlock()
+			continue
 		}
 
-		if item.Next() != nil {
-			c.items.mu.RLock()
+		for item := s.lru.Front(); item != s.lru.Back().Next(); item = item.Next() {
+			j := item.Value.(*Item[K, V])
+			s.mu.RUnlock()
+
+			if !fn(j) {
+				break
+			}
+
+			if item.Next() != nil {
+				s.mu.RLock()
+			}
 		}
 	}
 }
@@ -515,54 +349,24 @@ func (c *Cache[K, V]) Metrics() Metrics {
 // expired items.
 // It blocks until Stop is called.
 func (c *Cache[K, V]) Start() {
-	waitDur := func() time.Duration {
-		c.items.mu.RLock()
-		defer c.items.mu.RUnlock()
+	var wg sync.WaitGroup
 
-		if !c.items.expQueue.isEmpty() &&
-			!c.items.expQueue[0].Value.(*Item[K, V]).expiresAt.IsZero() {
-			d := time.Until(c.items.expQueue[0].Value.(*Item[K, V]).expiresAt)
-			if d <= 0 {
-				// execute immediately
-				return time.Microsecond
-			}
+	wg.Add(len(c.shards))
 
-			return d
-		}
-
-		if c.options.ttl > 0 {
-			return c.options.ttl
-		}
-
-		return time.Hour
+	for _, s := range c.shards {
+		go func(s *Shard[K, V]) {
+			defer wg.Done()
+			s.start()
+		}(s)
 	}
 
-	timer := time.NewTimer(waitDur())
-	stop := func() {
-		if !timer.Stop() {
-			// drain the timer chan
-			select {
-			case <-timer.C:
-			default:
-			}
-		}
+	<-c.stopCh
+
+	for _, s := range c.shards {
+		s.stop()
 	}
 
-	defer stop()
-
-	for {
-		select {
-		case <-c.stopCh:
-			return
-		case d := <-c.items.timerCh:
-			stop()
-			timer.Reset(d)
-		case <-timer.C:
-			c.DeleteExpired()
-			stop()
-			timer.Reset(waitDur())
-		}
-	}
+	wg.Wait()
 }
 
 // Stop stops the automatic cleanup process.
