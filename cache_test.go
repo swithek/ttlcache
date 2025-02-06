@@ -637,7 +637,7 @@ func Test_Cache_Get(t *testing.T) {
 			cache.options = c.DefaultOptions
 
 			var res *Item[string, string]
-			assert.Equal(t, c.ExpectedNumberOfAllocations, allocsForSingleRun(func() {
+			assert.Equal(t, c.ExpectedNumberOfAllocations, allocsPerSingleRun(func() {
 				res = cache.Get(c.Key, c.CallOptions...)
 			}))
 
@@ -1309,17 +1309,16 @@ func addToCache(c *Cache[string, string], ttl time.Duration, keys ...string) {
 	}
 }
 
-func allocsForSingleRun(f func()) (numAllocs int) {
+func allocsPerSingleRun(f func()) int {
 	// `testing.AllocsPerRun` "warms up" the function for a single run before
-	// measuring allocations, so we need do nothing on the first run.
-	firstRun := false
-	numAllocs = int(testing.AllocsPerRun(1, func() {
+	// measuring allocations, so we need to do nothing on the first run.
+	var firstRun bool
+
+	return int(testing.AllocsPerRun(1, func() {
 		if !firstRun {
 			firstRun = true
 			return
 		}
-
 		f()
 	}))
-	return
 }
